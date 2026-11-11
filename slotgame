@@ -1,0 +1,79 @@
+#!/bin/sh
+# Launcher do SlotOS: seatd -> Cage (mostra só 1 programa) -> Chromium em modo app/quiosque.
+
+GAME_URL="file:///opt/jogo/index.html"
+
+# usuário sem privilégios (o Chromium não gosta de rodar como root)
+adduser -D -s /bin/sh game 2>/dev/null
+for g in video input audio render seat; do
+	addgroup game "$g" 2>/dev/null
+done
+UID_GAME="$(id -u game)"
+
+mkdir -p "/run/user/$UID_GAME"
+chown game "/run/user/$UID_GAME"
+chmod 700 "/run/user/$UID_GAME"
+
+# ---------- ÁUDIO ----------
+# espera as placas de som aparecerem (até ~10 s)
+i=0
+while [ "$i" -lt 10 ] && ! grep -q '\[' /proc/asound/cards 2>/dev/null; do
+	sleep 1; i=$((i+1))
+done
+
+# escolhe a placa: USB primeiro; senão a primeira que não seja só HDMI
+CARD=""
+while read -r n rest; do
+	case "$n" in ''|*[!0-9]*) continue ;; esac
+	case "$rest" in *USB*|*usb*) CARD="$n"; break ;; esac
+done < /proc/asound/cards
+if [ -z "$CARD" ]; then
+	while read -r n rest; do
+		case "$n" in ''|*[!0-9]*) continue ;; esac
+		case "$rest" in *HDMI*|*hdmi*|*NVidia*|*NVIDIA*) continue ;; esac
+		CARD="$n"; break
+	done < /proc/asound/cards
+fi
+[ -z "$CARD" ] && CARD=0
+
+cat > /etc/asound.conf <<EOA
+pcm.!default { type plug; slave.pcm "hw:$CARD,0" }
+ctl.!default { type hw; card $CARD }
+EOA
+
+# liga o volume e tira o mudo de todos os controles de saída de todas as placas
+for c in $(sed -n 's/^ *\([0-9][0-9]*\) \[.*/\1/p' /proc/asound/cards); do
+	amixer -c "$c" -q sset "Auto-Mute Mode" Disabled 2>/dev/null
+	amixer -c "$c" scontrols 2>/dev/null | sed "s/^Simple mixer control '\(.*\)',[0-9]*$/\1/" |
+	while read -r ctl; do
+		case "$ctl" in *Mic*|*Capture*|*Line*|*Internal*|*Boost*|*Digital*|*"Auto-Mute"*|*Loopback*) continue ;; esac
+		amixer -c "$c" -q sset "$ctl" 100% unmute 2>/dev/null
+	done
+done
+# ---------------------------
+
+# seatd: dá ao usuário acesso à tela/teclado/mouse
+pgrep seatd >/dev/null 2>&1 || seatd -g video >/dev/null 2>&1 &
+sleep 1
+
+# perfil novo a cada partida (evita barra de "restaurar abas", etc.)
+rm -rf /tmp/chromium-slotos
+
+exec su game -c "
+	export XDG_RUNTIME_DIR=/run/user/$UID_GAME
+	export LIBSEAT_BACKEND=seatd
+	export WLR_NO_HARDWARE_CURSORS=1
+	exec cage -d -- chromium \\
+		--app=$GAME_URL \\
+		--kiosk --start-fullscreen --disable-dev-tools \\
+		--ozone-platform=wayland \\
+		--user-data-dir=/tmp/chromium-slotos \\
+		--no-first-run --no-default-browser-check \\
+		--disable-infobars --noerrdialogs \\
+		--disable-session-crashed-bubble \\
+		--disable-pinch --overscroll-history-navigation=0 \\
+		--autoplay-policy=no-user-gesture-required \\
+		--alsa-output-device=default \\
+		--disable-translate --disable-features=Translate,TranslateUI \\
+		--password-store=basic
+"
