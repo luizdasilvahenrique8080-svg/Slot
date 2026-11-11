@@ -1,15 +1,7 @@
-name: Montar ISO SlotOS
-on: workflow_dispatch
-jobs:
-  iso:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Montar ISO
+- name: Clonar o repositório aports
         run: |
-          mkdir -p saida
-          docker run --rm --privileged -v "$PWD:/kit" -v "$PWD/saida:/out" alpine:latest sh /kit/build.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: slotos-iso
-          path: saida/*.iso
+          if [ -d "/home/builder/aports" ]; then
+            sudo rm -rf /home/builder/aports
+          fi
+          sudo mkdir -p /home/builder
+          git clone https://gitlab.alpinelinux.org/alpine/aports.git /home/builder/aports
