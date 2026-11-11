@@ -1,23 +1,17 @@
-# Perfil do mkimage do Alpine: "SlotOS"
-profile_slotos() {
-	profile_standard
-	profile_abbrev="slotos"
-	title="SlotOS"
-	desc="Liga e abre direto o jogo Tigre da Sorte"
-	arch="x86_64"
-	kernel_flavors="lts"
-	kernel_cmdline="console=tty1 quiet loglevel=3"
-	hostname="slotos"
-	apkovl="genapkovl-slotos.sh"
-	apks="alpine-base alpine-baselayout busybox openrc
-		eudev udev-init-scripts udev-init-scripts-openrc libinput
-		seatd cage chromium
-		mesa-dri-gallium mesa-egl mesa-gles mesa-gbm
-		font-dejavu alsa-utils alsa-lib alsa-ucm-conf
-		linux-firmware-i915 linux-firmware-amdgpu linux-firmware-radeon
-		linux-firmware-nvidia linux-firmware-intel"
-	local _k
-	for _k in $kernel_flavors; do
-		apks="$apks linux-$_k"
-	done
-}
+#!/bin/sh
+
+# Configuração do ambiente de build do Slotos
+export ARCH=x86_64
+export BOOTSTRAP=tarball
+
+# Prepara diretórios necessários
+mkdir -p /home/builder/aports /home/builder/pkg /home/builder/src
+
+# Clona o aports utilizando o repositório oficial do GitHub como alternativa principal para evitar erros 128
+echo "Clonando o repositório aports..."
+git clone --depth=1 https://github.com/alpinelinux/aports.git /home/builder/aports || \
+git clone --depth=1 https://gitlab.alpinelinux.org/alpine/aports.git /home/builder/aports
+
+# Configuração e execução do mkimage do Alpine
+cd /home/builder/aports/scripts
+./mkimage.sh --profile slotos || echo "Falha ao executar o mkimage"
